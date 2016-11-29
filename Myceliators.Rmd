@@ -1,0 +1,175 @@
+---
+title: "myceliators"
+author: "Zachary Noel"
+date: "November 29, 2016"
+output: html_document
+---
+
+I include this header at the top of all code I write. 
+
+```{r eval=FALSE}
+rm(list = ls(all=TRUE)) # removes all variables in the global environment so you start fresh
+
+Sys.time() # prints out the time and date you ran the code
+
+options(scipen = 999) # stops anything from being in scientific notation
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# ipak function: install and load multiple R packages.
+# check to see if packages are installed. Install them if they are not, then load them into the R session.
+# Source: https://gist.github.com/stevenworthington/3178163
+ipak <- function(pkg){
+new.pkg <- pkg[!(pkg %in% installed.packages()[,"Package"])]
+if (length(new.pkg)) 
+    install.packages(new.pkg, dependencies = TRUE)
+sapply(pkg, require, character.only = TRUE)
+}
+#source("http://bioconductor.org/biocLite.R")
+#biocLite("phyloseq")
+packages <- c("biom", "qiimer", "vegan", "MASS", "ape", "phyloseq", "ggplot2", "plyr", "indicspecies")
+ipak(packages)
+```
+
+
+```{r}
+pythium_data <- read.csv("/Users/zacharynoel/AdvancedMycology/myceliator/AdvancedMycology/pythiumdata.csv", sep = ",", header = T )
+counts <- count(pythium_data, 'year')
+counts$cum <- cumsum(counts$freq)
+plot <- ggplot() +
+  geom_histogram(data = pythium_data, aes(year), binwidth = 1) + 
+  ylab("Records with Pythium in species name") + 
+  xlab("Year") +
+  scale_x_continuous(breaks = seq(from = 1850, to = 2016, by = 2)) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+plot2 <- ggplot() +
+  geom_line(data = counts, aes(x = year, y = cum)) +
+  ylab("Cumulative records with Pythium in species name") + 
+  xlab("Year") +
+  scale_x_continuous(breaks = seq(from = 1850, to = 2016, by = 2)) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+  
+```
+
+```{r}
+samp_dat <- read.csv("/Users/zacharynoel/AdvancedMycology/myceliator/mapping_myceliator.csv", sep = ",", header = T )
+
+rownames(samp_dat) <- samp_dat$SampleID #row names must match OTU table headers
+
+SAMP <- sample_data(samp_dat)
+
+# biom file
+biom <- import_biom("/Users/zacharynoel/AdvancedMycology/myceliator/R1_otu_table_tax_json.biom", header=T)
+OTU <- otu_table(biom, taxa_are_rows = TRUE)
+
+# taxonomy file
+taxonomy<-read.table("/Users/zacharynoel/AdvancedMycology/myceliator/R1_taxonomy_otutaxout__RDP.txt", sep="\t", header=F)
+
+###
+#code to split up the taxonomy string #
+##
+
+tax<-as.character(taxonomy$V2)
+head(tax)
+#root<-NA
+Kingdom<-NA
+Phylum<-NA
+Class<-NA
+Order<-NA
+Family<-NA
+Genus<-NA
+Species<-NA
+
+linaean<-data.frame(Kingdom,Phylum,Class,Order,Family,Genus,Species)
+
+for (i in 1:dim(taxonomy)[1]) {
+
+  split.tax<-strsplit(tax[i],split=c(";"))
+  linaean[i,1]<-substr(split.tax[[1]][1], 4,30)
+  linaean[i,2]<-substr(split.tax[[1]][2], 4,30)
+  linaean[i,3]<-substr(split.tax[[1]][3], 4,30)
+  linaean[i,4]<-substr(split.tax[[1]][4], 4,30)
+  linaean[i,5]<-substr(split.tax[[1]][5], 4,30)
+  linaean[i,6]<-substr(split.tax[[1]][6], 4,30)
+  linaean[i,7]<-substr(split.tax[[1]][7], 4,30)
+}
+##
+
+# remove underscore before taxon name
+rownames(linaean) <- taxonomy$V1
+for(i in 2:7){
+linaean[,i] <- gsub("_","",linaean[,i])
+}
+
+TAX <- tax_table(as.matrix(linaean))
+
+myphy <- phyloseq(OTU, TAX, SAMP)
+
+dim(otu_table(myphy)) #check dimensions of the otu table
+myphy_f <- subset_taxa(myphy, Kingdom=="Fungi") #include all OTUS identified
+dim(otu_table(myphy_f)) #check how many were excluded
+
+myphy_f_rare <- rarefy_even_depth(myphy_f, rngseed=1) #record seed and # of OTUs removed
+
+testOTU <- otu_table(myphy_f_rare@otu_table, taxa_are_rows=TRUE)
+f1  <- filterfun_sample(topp(0.05))
+wh1 <- genefilter_sample(testOTU, f1, A=10)
+otu_abun <- prune_taxa(wh1, testOTU)
+abun <- phyloseq(otu_abun, TAX, SAMP)
+
+my_as <- subset_taxa(abun, Phylum=="Ascomycota")
+my_zy <- subset_taxa(abun, Phylum=="Zygomycota")
+my_bas <- subset_taxa(myphy_f_rare, Phylum=="Basidiomycota")
+my_chi <- subset_taxa(myphy_f_rare, Phylum=="Chytridiomycota")
+
+plot_richness(my_as, x="OrchardMan", 
+              measures=c("Simpson"))+
+  geom_boxplot(aes(color=OrchardMan))+
+  theme_bw() + facet_grid(~Distance_cat)
+```
+
+```{r}
+indicspecies::multipatt(abun@otu_table, cluster = abun@sam_data$SampleID)
+
+```
+
+```{r}
+GPdist = phyloseq::distance(myphy_f_rare, "bray") # create bray-curtis distance matrix
+GP.ord <- ordinate(myphy_f_rare, "NMDS", "bray", k = 4) # NMDS ordination 
+
+plot_ordination(myphy_f_rare, ordination = GP.ord, type = "samples", 
+                color = "Rep", title = "Fungal NMDS (Bray-Curtis dissim.)") + theme_bw() + geom_point()
+
+plot_ordination(myphy_f_rare, ordination = GP.ord, type = "split", 
+                color = "Phylum", title = "Fungal NMDS (Bray-Curtis dissim.)") + theme_bw() + facet_grid(~Phylum)
+
+adonis(GPdist~OrchardMan,  as(sample_data(myphy_f_rare), "data.frame")) #Are there significant changes? 
+adonis(GPdist~Distance_cat,  as(sample_data(myphy_f_rare), "data.frame")) #Are there significant changes? 
+adonis(GPdist~Distance_cat*OrchardMan,  as(sample_data(myphy_f_rare), "data.frame"), permutations = 10000) #Are there significant changes? 
+```
+
+```{r}
+dim(otu_table(myphy_f_rare)) #check dimensions of the otu table
+
+myphy_Class <- tax_glom(myphy_f_rare, taxrank="Order") #agglomerate taxa based on class level
+
+dim(otu_table(myphy_Class)) 
+plot_bar(myphy_Class, x = "OrchardMan", y = "Abundance", fill="Class") 
+```
+
+```{r}
+
+p <- plot_heatmap(my_as, "NMDS", "bray", "Order")
+```
+
+```{r}
+ig <- make_network(my_as, max.dist=0.8)
+plot_network(ig, myphy_f_rare)
+plot_net(my_as, distance = "bray", type = "taxa", color = "Class")
+```
+
