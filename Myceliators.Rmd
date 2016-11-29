@@ -33,29 +33,6 @@ packages <- c("biom", "qiimer", "vegan", "MASS", "ape", "phyloseq", "ggplot2", "
 ipak(packages)
 ```
 
-
-```{r}
-pythium_data <- read.csv("/Users/zacharynoel/AdvancedMycology/myceliator/AdvancedMycology/pythiumdata.csv", sep = ",", header = T )
-counts <- count(pythium_data, 'year')
-counts$cum <- cumsum(counts$freq)
-plot <- ggplot() +
-  geom_histogram(data = pythium_data, aes(year), binwidth = 1) + 
-  ylab("Records with Pythium in species name") + 
-  xlab("Year") +
-  scale_x_continuous(breaks = seq(from = 1850, to = 2016, by = 2)) + 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
-plot2 <- ggplot() +
-  geom_line(data = counts, aes(x = year, y = cum)) +
-  ylab("Cumulative records with Pythium in species name") + 
-  xlab("Year") +
-  scale_x_continuous(breaks = seq(from = 1850, to = 2016, by = 2)) + 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
-
-  
-```
-
 ```{r}
 samp_dat <- read.csv("/Users/zacharynoel/AdvancedMycology/myceliator/mapping_myceliator.csv", sep = ",", header = T )
 
