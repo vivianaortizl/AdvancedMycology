@@ -5,6 +5,9 @@ date: "November 29, 2016"
 output: html_document
 ---
 
+Most of this code comes from a gihub repository that I copied from and is not my own!
+
+
 I include this header at the top of all code I write. 
 
 ```{r eval=FALSE}
@@ -33,19 +36,19 @@ packages <- c("biom", "qiimer", "vegan", "MASS", "ape", "phyloseq", "ggplot2", "
 ipak(packages)
 ```
 
+Loading data: you need the biom file, the mapping file, and the taxonomy file
 ```{r}
-samp_dat <- read.csv("/Users/zacharynoel/AdvancedMycology/myceliator/mapping_myceliator.csv", sep = ",", header = T )
-
+#Loading the mapping file
+samp_dat <- read.csv("mapping_myceliator.csv", sep = ",", header = T )
 rownames(samp_dat) <- samp_dat$SampleID #row names must match OTU table headers
-
 SAMP <- sample_data(samp_dat)
 
 # biom file
-biom <- import_biom("/Users/zacharynoel/AdvancedMycology/myceliator/R1_otu_table_tax_json.biom", header=T)
+biom <- import_biom("R1_otu_table_tax_json.biom", header=T)
 OTU <- otu_table(biom, taxa_are_rows = TRUE)
 
 # taxonomy file
-taxonomy<-read.table("/Users/zacharynoel/AdvancedMycology/myceliator/R1_taxonomy_otutaxout__RDP.txt", sep="\t", header=F)
+taxonomy<-read.table("R1_taxonomy_otutaxout__RDP.txt", sep="\t", header=F)
 
 ###
 #code to split up the taxonomy string #
@@ -93,12 +96,17 @@ dim(otu_table(myphy_f)) #check how many were excluded
 
 myphy_f_rare <- rarefy_even_depth(myphy_f, rngseed=1) #record seed and # of OTUs removed
 
+#If you want to filter your OTU table to the most significant taxa (p = 0.05)
 testOTU <- otu_table(myphy_f_rare@otu_table, taxa_are_rows=TRUE)
-f1  <- filterfun_sample(topp(0.05))
-wh1 <- genefilter_sample(testOTU, f1, A=10)
+f1  <- filterfun_sample(topp(0.05)) # defining the function
+wh1 <- genefilter_sample(testOTU, f1, A=1) # A is the number of taxa that pass the filter?
 otu_abun <- prune_taxa(wh1, testOTU)
-abun <- phyloseq(otu_abun, TAX, SAMP)
 
+abun <- phyloseq(otu_abun, TAX, SAMP)
+```
+
+Do some species richness ploting
+```{r}
 my_as <- subset_taxa(abun, Phylum=="Ascomycota")
 my_zy <- subset_taxa(abun, Phylum=="Zygomycota")
 my_bas <- subset_taxa(myphy_f_rare, Phylum=="Basidiomycota")
@@ -110,11 +118,12 @@ plot_richness(my_as, x="OrchardMan",
   theme_bw() + facet_grid(~Distance_cat)
 ```
 
+Indicator species analysis *Note* takes a long time!
 ```{r}
 indicspecies::multipatt(abun@otu_table, cluster = abun@sam_data$SampleID)
-
 ```
 
+NMDS ordination 
 ```{r}
 GPdist = phyloseq::distance(myphy_f_rare, "bray") # create bray-curtis distance matrix
 GP.ord <- ordinate(myphy_f_rare, "NMDS", "bray", k = 4) # NMDS ordination 
@@ -130,6 +139,7 @@ adonis(GPdist~Distance_cat,  as(sample_data(myphy_f_rare), "data.frame")) #Are t
 adonis(GPdist~Distance_cat*OrchardMan,  as(sample_data(myphy_f_rare), "data.frame"), permutations = 10000) #Are there significant changes? 
 ```
 
+Bar graphs
 ```{r}
 dim(otu_table(myphy_f_rare)) #check dimensions of the otu table
 
@@ -139,11 +149,12 @@ dim(otu_table(myphy_Class))
 plot_bar(myphy_Class, x = "OrchardMan", y = "Abundance", fill="Class") 
 ```
 
+Heatmaps
 ```{r}
-
 p <- plot_heatmap(my_as, "NMDS", "bray", "Order")
 ```
 
+Network anaylsis
 ```{r}
 ig <- make_network(my_as, max.dist=0.8)
 plot_network(ig, myphy_f_rare)
